@@ -3,6 +3,7 @@
     Streamx-Delivery (python) by StreamX team
 */
 
+
 /*
     const express = require("express")
     const app = express()
@@ -21,7 +22,6 @@
     const MongoConnector = require("./src/Mongo")
     const Essentials = require("./src/essentials")
     const CONFIG = require("./config.json")
-
 
     const express = require("express")
     const app = express()
@@ -64,10 +64,10 @@
             console.log("uhh")
             const dtime = Date.now()
             let dateObject = new Date(dtime)
-            let time = `${dateObject.getUTCFullYear()}/${dateObject.getUTCMonth()}/${dateObject.getUTCDay()}`
+            let time = `${dateObject.getUTCFullYear()}/${dateObject.getMonth()}/${dateObject.getDay()}`
             console.log(user)
             if (time != user["lastusage"]) {
-                await payments.collection("data").updateOne({"userid":user["userid"]},{"$set": {"quota": user["quota"] - 1}})
+                await payments.collection("data").updateOne({"userid":user["userid"]},{"$set": {"quota": (user["quota"] || 5) - 1}})
                 await payments.collection("data").updateOne({"userid":user["userid"]},{"$set": {"lastusage": time}})
             }
             console.log("uhh")
@@ -85,7 +85,11 @@
                 if (apikey != authkey["apikey"]) {
                     return res.status(401).json({"code": 401,"message": "API key is missing permissions for requested game."})
                 } else if (parseInt(placever) == 0) {
-                    //await streamingDB.collection("parts").drop()
+                    try {
+                        await streamingDB.collection(`parts.${storagekey}`).drop()
+                    } catch {
+
+                    }
                     await streamingDB.collection("keys").deleteOne({"authkey": authkey["authkey"]})
                     authkey = Crypto.randomBytes(16).toString("hex")
                     upload = true
@@ -123,16 +127,24 @@
             let tb = []
             let buffer = req.read()
             let bufferRead = Buffer.from(buffer).toString()
-            console.log(buffer)
+
             console.log(bufferRead)
-            for (let part in bufferRead.split(",")) {
+            for (let part of bufferRead.split(",")) {
                 let partSplit = part.split(":")
-                let x,y,z,d = partSplit
-                tb.append({"x": float(x), "y": float(y), "z": float(z), "d": d})
-                console.log("Appended:", partSplit,x,y,z,d)
+                console.log(part)
+                console.log(partSplit)
+                let x = partSplit[0]
+                let y = partSplit[1]
+                let z = partSplit[2]
+                let d = partSplit[3]
+                tb.push({"x": parseFloat(x), "y": parseFloat(y), "z": parseFloat(z), "d": d})
+                console.log("Appended:",{"x": parseFloat(x), "y": parseFloat(y), "z": parseFloat(z), "d": d})
             }
+            await streamingDB.collection(`parts.${kdata["storagekey"]}`).insertMany(tb)
+            return res.status(200).json({"code": 200,"message": "OK"})
         } catch (E) {
             console.log(E)
+            return res.status(400).json({"code": 400,"message": "Invalid part information."})
         }
 
     })
