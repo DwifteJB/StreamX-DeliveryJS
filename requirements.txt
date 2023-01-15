@@ -1,4 +1,0 @@
-rich
-aiohttp
-pymongo
-requests
