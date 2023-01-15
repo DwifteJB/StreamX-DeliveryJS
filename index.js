@@ -28,53 +28,54 @@
 
     const bodyParser = require("body-parser");
 
-    app.use(bodyParser.urlencoded({
-        extended: true
-    }));
-
-    app.use(bodyParser.json());
-
+    // app.use(bodyParser.urlencoded({
+    //     extended: true
+    // }));
 
     const Mongo = await new MongoConnector(CONFIG.MONGO.Username.trim(),CONFIG.MONGO.Password.trim(),CONFIG.MONGO.Address).init()
-    const streamingDB = Mongo.db("streaming")
-    const payments = Mongo.db("purchases")
-    const paymentData = payments.collection("data")
+    const streamingDB = await Mongo.db("streaming")
+    const payments = await Mongo.db("purchases")
 
     console.log(await Essentials.validateKey(Mongo,"sdaasd"))
     app.get("/",(req,res) => {
-        res.status(200)
-        res.send("OK")
+        res.status(200).send("OK")
     })
 
-    app.post("/init",async (req,res) => {
+    app.post("/init",bodyParser.urlencoded({
+        extended: true
+    }),bodyParser.json() ,async (req,res) => {
         try {
-            const apikey = await req.headers.get("X-StreamX-Key")
+            const apikey = req.get("X-StreamX-Key")
             if (!await Essentials.validateKey(Mongo,apikey)) {
-                res.status(401)
-                return res.send({"code": 401,"message": "Invalid auth key."})
+                console.log(apikey,"is an invalid auth key.")
+                return res.status(401).json({"code": 401,"message": "Invalid auth key."})
             }
 
-            const data = await req.json()
+            const data = req.body
+            console.log("data",data)
             const placeid = data.placeid
             const placever = data.placever
 
-            const user = Mongo.db("payment").collection("data").findOne({whitelist:placeid,apikeys:{key: apikey, reason:undefined}})
+            const user = await Mongo.db("payment").collection("data").findOne({whitelist:placeid,apikeys:{key: apikey, reason:null}})
             if (!user) {
-                res.status(401)
-                return res.send({"code": 401,"message": "You do not have access to this game."})
+                console.log(apikey,"does not have access to game:",placeid)
+                return res.status(401).json({"code": 401,"message": "You do not have access to this game."})
             }
+            console.log("uhh")
             const dtime = Date.now()
             let dateObject = new Date(dtime)
             let time = `${dateObject.getUTCFullYear()}/${dateObject.getUTCMonth()}/${dateObject.getUTCDay()}`
+            console.log(user)
             if (time != user["lastusage"]) {
-                await paymentData.updateOne({"userid":user["userid"]},{"$set": {"quota": user["quota"] - 1}})
-                await paymentData.updateOne({"userid":user["userid"]},{"$set": {"lastusage": time}})
+                await payments.collection("data").updateOne({"userid":user["userid"]},{"$set": {"quota": user["quota"] - 1}})
+                await payments.collection("data").updateOne({"userid":user["userid"]},{"$set": {"lastusage": time}})
             }
+            console.log("uhh")
 
             const storagekey = `${placeid}${placever}`
             let authkey = await streamingDB.collection("keys").findOne({"storagekey":storagekey})
             let upload = false
-
+            console.log("uhh")
             if (!authkey) {
                 authkey = Crypto.randomBytes(16).toString("hex")
                 upload = true
@@ -82,10 +83,9 @@
 
             } else {
                 if (apikey != authkey["apikey"]) {
-                    res.status(401)
-                    return res.send({"code": 401,"message": "API key is missing permissions for requested game."})
+                    return res.status(401).json({"code": 401,"message": "API key is missing permissions for requested game."})
                 } else if (parseInt(placever) == 0) {
-                    await streamingDB.collection("parts").drop({dbName:storagekey})
+                    //await streamingDB.collection("parts").drop()
                     await streamingDB.collection("keys").deleteOne({"authkey": authkey["authkey"]})
                     authkey = Crypto.randomBytes(16).toString("hex")
                     upload = true
@@ -95,33 +95,42 @@
                     authkey = authkey["authkey"]
                 }
             }
-            res.status(200)
-            return res.send({"code": 200,"key": authkey,"upload": upload})
+            console.log(apikey,"successfully uploaded to: ",placeid)
+            return res.status(200).json({"code": 200,"key": authkey,"upload": upload})
         
         } catch (e) {
             console.log(e)
-            res.status(400)
-            return res.send({"code": 400,"message":"Missing either PlaceID or Place Version."})
+            return res.status(400).json({"code": 400,"message":"Missing either PlaceID or Place Version."})
         
         }
     })
 
     app.post("/upload",async (req,res) => {
-        const authkey = req.headers.get("X-StreamX-Auth")
+        const authkey = req.get("X-StreamX-Auth")
+        console.log("/upload:", authkey)
         if (!authkey || authkey.length > 32) {
-            res.status(401)
-            return res.send({"code": 401,"message": "Invalid auth key."})
+            console.log(authkey,"was not found or was too long")
+            return res.status(401).json({"code": 401,"message": "Invalid auth key."})
         }
-        const kdata = streamingDB.collection("keys").findOne({"authkey":authkey})
+        const kdata = await streamingDB.collection("keys").findOne({"authkey":authkey})
 
         if (!kdata) {
-            res.status(401)
-            return res.send({"code": 401,"message": "Invalid auth key."})
+            console.log(authkey,"was invalid")
+            return res.status(401).json({"code": 401,"message": "Invalid auth key."})
         }
 
         try {
             let tb = []
-            console.log(req.read())
+            let buffer = req.read()
+            let bufferRead = Buffer.from(buffer).toString()
+            console.log(buffer)
+            console.log(bufferRead)
+            for (let part in bufferRead.split(",")) {
+                let partSplit = part.split(":")
+                let x,y,z,d = partSplit
+                tb.append({"x": float(x), "y": float(y), "z": float(z), "d": d})
+                console.log("Appended:", partSplit,x,y,z,d)
+            }
         } catch (E) {
             console.log(E)
         }
