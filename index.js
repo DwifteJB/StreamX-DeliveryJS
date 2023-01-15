@@ -41,9 +41,7 @@
         res.status(200).send("OK")
     })
 
-    app.post("/init",bodyParser.urlencoded({
-        extended: true
-    }),bodyParser.json() ,async (req,res) => {
+    app.post("/init", bodyParser.urlencoded({extended: true}), bodyParser.json(),async (req,res) => {
         try {
             const apikey = req.get("X-StreamX-Key")
             if (!await Essentials.validateKey(Mongo,apikey)) {
@@ -61,7 +59,6 @@
                 console.log(apikey,"does not have access to game:",placeid)
                 return res.status(401).json({"code": 401,"message": "You do not have access to this game."})
             }
-            console.log("uhh")
             const dtime = Date.now()
             let dateObject = new Date(dtime)
             let time = `${dateObject.getUTCFullYear()}/${dateObject.getMonth()}/${dateObject.getDay()}`
@@ -70,12 +67,10 @@
                 await payments.collection("data").updateOne({"userid":user["userid"]},{"$set": {"quota": (user["quota"] || 5) - 1}})
                 await payments.collection("data").updateOne({"userid":user["userid"]},{"$set": {"lastusage": time}})
             }
-            console.log("uhh")
 
             const storagekey = `${placeid}${placever}`
             let authkey = await streamingDB.collection("keys").findOne({"storagekey":storagekey})
             let upload = false
-            console.log("uhh")
             if (!authkey) {
                 authkey = Crypto.randomBytes(16).toString("hex")
                 upload = true
@@ -109,7 +104,7 @@
         }
     })
 
-    app.post("/upload",async (req,res) => {
+    app.post("/upload", async (req,res) => {
         const authkey = req.get("X-StreamX-Auth")
         console.log("/upload:", authkey)
         if (!authkey || authkey.length > 32) {
@@ -147,6 +142,56 @@
             return res.status(400).json({"code": 400,"message": "Invalid part information."})
         }
 
+    })
+    app.post("/download",bodyParser.urlencoded({extended: true}), bodyParser.json(), async (req,res) => {
+        const authkey = req.get("X-StreamX-Auth")
+        console.log("/download:",authkey)
+        if (authkey.length > 32) {
+            console.log(authkey,"was not found or was too long")
+            return res.status(401).json({"code": 401,"message": "Invalid auth key."})
+        }
+
+        const kdata = await streamingDB.collection("keys").findOne({"authkey": authkey})
+
+        if (!kdata) {
+            console.log(authkey,"is an invalid auth key")
+            return res.status(401).json({"code": 401,"message": "Invalid auth key."})
+        }
+
+        try {
+            const data = req.body
+            console.log(data)
+            const HeadPositions = data["HeadPosition"]
+            const x = parseFloat(HeadPositions[0])
+            const y = parseFloat(HeadPositions[1])
+            const z = parseFloat(HeadPositions[2])
+            const StudDifference = parseFloat(data["StudDifference"])
+
+            const parts = await streamingDB.collection(`parts.${kdata["storagekey"]}`).find({
+                "x": {$lt: x + StudDifference, $gt: x - StudDifference},
+                "y": {$lt: y + StudDifference, $gt: y - StudDifference},
+                "z": {$lt: z + StudDifference, $gt: z - StudDifference}
+            }).toArray()
+            console.log(parts)
+            if (!parts || parts.length == 0) {
+                res.send("!")
+                return
+            } else {
+                let concat = []
+                for (let p in parts) {
+                    concat.push(parts[p]["d"])
+                }
+                
+                let cc = concat.join(",")
+                console.log(cc)
+                return res.send(cc)
+            }
+
+        } catch(E) {
+            console.log(E)
+            return res.status(400).json({"code": 400,"message":"Missing either HeadPositions or StudDifference."})
+        
+        }
     })
 
     app.listen(80,() => {
