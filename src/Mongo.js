@@ -13,7 +13,7 @@ class MongoConnection {
             await client.connect()
     
             await client.db("admin").command({ ping: 1 });
-            console.log("Connected successfully to server");
+            console.log("Connected successfully to Mongo Instance.");
 
 
         } catch(err) {

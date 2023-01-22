@@ -3,20 +3,6 @@
     Streamx-Delivery (python) by StreamX team
 */
 
-
-/*
-    const express = require("express")
-    const app = express()
-
-    app.get("/",(req,res) => {
-        res.status(200)
-        res.send("OK")
-    })
-
-    app.listen(80,() => {
-        console.log("StreamX web server is online! localhost:80")
-    })
-*/
 (async () => {
     const Crypto = require("crypto")
     const MongoConnector = require("./src/Mongo")
@@ -28,31 +14,46 @@
 
     const bodyParser = require("body-parser");
 
-    // app.use(bodyParser.urlencoded({
-    //     extended: true
-    // }));
-
     const Mongo = await new MongoConnector(CONFIG.MONGO.Username.trim(),CONFIG.MONGO.Password.trim(),CONFIG.MONGO.Address).init()
     const streamingDB = await Mongo.db("streaming")
     const payments = await Mongo.db("purchases")
 
     console.log(await Essentials.validateKey(Mongo,"sdaasd"))
+
     app.get("/",(req,res) => {
-        res.status(200).send("OK")
+        res.status(200).send(`Welcome to the StreamX delivery server.<br><br> Sadly you can't do anything here until a webportal is built, except for: <a href="/dogwithabanana">clicking this link.</a><br><br>Get the StreamX Client <a href="https://github.com/Roblox-StreamX/Client">here</a><br><br>Support <a href="https://github.com/DwifteJB">Dwifte</a> and the <a href="https://github.com/Roblox-StreamX">StreamX Developers!</a>`)
     })
 
-    app.post("/init", bodyParser.urlencoded({extended: true}), bodyParser.json(),async (req,res) => {
+    app.post("/",(req,res) => {
+        res.send(`OK`)
+    })
+
+    app.get("/dogwithabanana",(req,res) => {
+        res.redirect("https://www.youtube.com/watch?v=21HNPnjjcZE")
+    })
+
+    app.post("/init",async (req,res) => { // bodyParser.urlencoded({extended: true}), bodyParser.json()
         try {
             const apikey = req.get("X-StreamX-Key")
+            let placeid
+            let placever
+            try {
+                placeid = parseInt(req.get("X-StreamX-PlaceID"))
+                placever = parseInt(req.get("X-StreamX-PlaceVer"))
+            } catch(e) {
+                console.error(e)
+                return res.status(401).json({"code": 401,"message": "Invalid headers."})
+            }
+            console.log(apikey,placeid,placever)
+            if (placeid == undefined || placever == undefined) {
+                console.log("Could not find headers.")
+                return res.status(401).json({"code": 401,"message": "Invalid headers."})
+            }
+
             if (!await Essentials.validateKey(Mongo,apikey)) {
                 console.log(apikey,"is an invalid auth key.")
                 return res.status(401).json({"code": 401,"message": "Invalid auth key."})
             }
-
-            const data = req.body
-            console.log("data",data)
-            const placeid = data.placeid
-            const placever = data.placever
 
             const user = await Mongo.db("payment").collection("data").findOne({whitelist:placeid,apikeys:{key: apikey, reason:null}})
             if (!user) {
@@ -61,7 +62,7 @@
             }
             const dtime = Date.now()
             let dateObject = new Date(dtime)
-            let time = `${dateObject.getUTCFullYear()}/${dateObject.getMonth()}/${dateObject.getDay()}`
+            let time = `${dateObject.getUTCFullYear()}/${dateObject.getMonth()+1}/${dateObject.getDay()}`
             console.log(user)
             if (time != user["lastusage"]) {
                 await payments.collection("data").updateOne({"userid":user["userid"]},{"$set": {"quota": (user["quota"] || 5) - 1}})
@@ -82,9 +83,7 @@
                 } else if (parseInt(placever) == 0) {
                     try {
                         await streamingDB.collection(`parts.${storagekey}`).drop()
-                    } catch {
-
-                    }
+                    } catch {}
                     await streamingDB.collection("keys").deleteOne({"authkey": authkey["authkey"]})
                     authkey = Crypto.randomBytes(16).toString("hex")
                     upload = true
@@ -94,7 +93,7 @@
                     authkey = authkey["authkey"]
                 }
             }
-            console.log(apikey,"successfully uploaded to: ",placeid)
+            console.log(apikey,"successfully uploaded to:",placeid)
             return res.status(200).json({"code": 200,"key": authkey,"upload": upload})
         
         } catch (e) {

@@ -1,7 +1,4 @@
-const { MongoClient } = require("mongodb");
-
 async function validateKey(mongoDB,key) {
-    // app.payment = mongo["purchases"]
     const purchases = mongoDB.db("purchases")
     const payments = purchases.collection("data")
 
