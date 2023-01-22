@@ -17,7 +17,8 @@ class MongoConnection {
 
 
         } catch(err) {
-            console.log("Could not connect to MongoDB DB")
+            console.log("Could not connect to MongoDB!")
+            console.log(err)
             process.exit(1)
         }
         this.Client = client
